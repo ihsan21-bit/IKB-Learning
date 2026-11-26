@@ -28,6 +28,7 @@ const sb = (window.supabase && isSupabaseConfigured())
 // ---------- State ----------
 let appState = structuredClone(DEFAULT_DATA);
 let isAdminLoggedIn = false;
+let currentRole = null;        // 'admin' | 'trainer' (mode demo: 'admin')
 let pendingLogoValue = '';      // URL / data-URL logo yang akan disimpan
 let pendingLogoFile = null;     // File logo baru (jika dipilih)
 let pendingMateriPdf = null;    // { file, fileName }
@@ -42,7 +43,11 @@ window.addEventListener('DOMContentLoaded', async () => {
     if (sb) {
         try {
             const { data } = await sb.auth.getSession();
-            if (data && data.session) isAdminLoggedIn = true;
+            if (data && data.session) {
+                currentRole = await fetchRole();
+                if (currentRole) isAdminLoggedIn = true;
+                else await sb.auth.signOut();
+            }
         } catch (e) { console.warn(e); }
     }
     renderAll();
@@ -127,7 +132,7 @@ function handleError(err, action) {
     console.error(err);
     let msg = (err && err.message) ? err.message : String(err);
     if (/row-level security|permission denied|not authorized/i.test(msg)) {
-        msg = 'Akun ini tidak punya izin admin. Pastikan email admin sudah diatur di supabase/schema.sql.';
+        msg = 'Akun ini tidak punya izin untuk aksi tersebut. Periksa peran akun di supabase/roles.sql.';
     }
     showToast(`Gagal ${action}: ${msg}`, 'error');
 }
@@ -375,6 +380,24 @@ function updateStats() {
     });
 }
 
+// ---------- Peran (admin / trainer) ----------
+async function fetchRole() {
+    if (!sb) return 'admin';
+    const { data, error } = await sb.from('user_roles').select('role').maybeSingle();
+    if (error) { console.warn('Gagal membaca peran:', error); return null; }
+    return data ? data.role : null;
+}
+
+function applyRoleUI() {
+    const isAdmin = currentRole === 'admin';
+    const label = document.getElementById('admin-role-label');
+    if (label) label.textContent = isAdmin ? 'Mode Administrator' : 'Mode Trainer';
+    const title = document.getElementById('admin-dashboard-title');
+    if (title) title.textContent = isAdmin ? 'Pengaturan & Manajemen Konten Admin' : 'Manajemen Modul & Kuis (Trainer)';
+    const tab = document.getElementById('admin-tab-identitas');
+    if (tab) tab.classList.toggle('hidden', !isAdmin);
+}
+
 // ---------- Login admin ----------
 function setupLoginHint() {
     const label = document.getElementById('admin-username-label');
@@ -384,7 +407,7 @@ function setupLoginHint() {
         label.textContent = 'Email Admin';
         input.type = 'email';
         input.placeholder = 'email@anda.com';
-        hint.innerHTML = 'Masuk dengan akun admin yang dibuat di <strong>Supabase &gt; Authentication &gt; Users</strong>.';
+        hint.innerHTML = 'Masuk dengan akun <strong>Admin</strong> atau <strong>Trainer</strong> Anda. Akun dibuat di Supabase &gt; Authentication &gt; Users.';
     } else {
         label.textContent = 'Username Admin';
         input.type = 'text';
@@ -427,8 +450,17 @@ async function handleAdminLogin(event) {
             const { error } = await sb.auth.signInWithPassword({ email: user, password: pass });
             ok = !error;
             if (error) errEl.textContent = 'Email atau password salah.';
+            else {
+                currentRole = await fetchRole();
+                if (!currentRole) {
+                    await sb.auth.signOut();
+                    ok = false;
+                    errEl.textContent = 'Akun ini belum terdaftar sebagai admin/trainer (lihat supabase/roles.sql).';
+                }
+            }
         } else {
             ok = user === DEMO_ADMIN.username && (await sha256Hex(pass)) === DEMO_ADMIN.passwordHash;
+            if (ok) currentRole = 'admin';
             if (!ok) errEl.textContent = 'Username atau password salah (demo: admin / admin123).';
         }
     } catch (e) {
@@ -441,7 +473,7 @@ async function handleAdminLogin(event) {
         isAdminLoggedIn = true;
         closeAdminLoginModal();
         showAdminDashboard();
-        showToast('Berhasil masuk ke Panel Admin', 'success');
+        showToast(`Berhasil masuk sebagai ${currentRole === 'admin' ? 'Admin' : 'Trainer'}`, 'success');
     } else {
         errEl.classList.remove('hidden');
     }
@@ -452,11 +484,12 @@ function showAdminDashboard() {
     document.getElementById('admin-dashboard-view').classList.remove('hidden');
     updateAdminButton();
     updateStorageBadge();
+    applyRoleUI();
     populateSettingsForm();
     renderAdminMateriList();
     renderAdminKuisList();
     updateStats();
-    switchAdminTab('identitas');
+    switchAdminTab(currentRole === 'admin' ? 'identitas' : 'materi');
     window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
@@ -470,6 +503,7 @@ function returnToPublicPortal() {
 async function logoutAdmin() {
     if (sb) { try { await sb.auth.signOut(); } catch (e) { console.warn(e); } }
     isAdminLoggedIn = false;
+    currentRole = null;
     pendingLogoFile = null; pendingMateriPdf = null; pendingKuisPdf = null;
     document.getElementById('admin-dashboard-view').classList.add('hidden');
     document.getElementById('public-portal-view').classList.remove('hidden');
@@ -478,6 +512,7 @@ async function logoutAdmin() {
 }
 
 function switchAdminTab(tabName) {
+    if (tabName === 'identitas' && currentRole !== 'admin') tabName = 'materi';
     ['identitas', 'materi', 'kuis'].forEach(t => {
         const panel = document.getElementById(`admin-panel-${t}`);
         const btn = document.getElementById(`admin-tab-${t}`);
@@ -532,6 +567,7 @@ function resetLogoToDefault() {
 
 async function saveAdminSettings(event) {
     event.preventDefault();
+    if (currentRole !== 'admin') { showToast('Hanya Admin yang boleh mengubah tampilan website', 'error'); return; }
     const btn = event.submitter;
     if (btn) btn.disabled = true;
     try {
