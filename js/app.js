@@ -5,8 +5,8 @@
 
 /* ===================== KONFIGURASI (dibaca dari js/config.js) ===================== */
 const CFG=window.IKB_CONFIG||{};
-const SUPABASE_URL=CFG.SUPABASE_URL||'';
-const SUPABASE_ANON_KEY=CFG.SUPABASE_ANON_KEY||'';
+const SUPABASE_URL=CFG.SUPABASE_URL||'https://igorxndfjzxtuvjxeuod.supabase.co';
+const SUPABASE_ANON_KEY=CFG.SUPABASE_ANON_KEY||'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imlnb3J4bmRmanp4dHV2anhldW9kIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTU3NjQ1NjMsImV4cCI6MjExMTM0MDU2M30.CtKn3miJkN4Mnh6TVtCJBRvBT4_DPQyc1Ak9AiTlxTY';
 const EMAIL_DOMAIN=CFG.EMAIL_DOMAIN||'ikblearning.id';
 const BUCKET='assets';
 const CONFIGURED=!!SUPABASE_URL&&!!SUPABASE_ANON_KEY&&!/YOUR-/.test(SUPABASE_URL+SUPABASE_ANON_KEY);
